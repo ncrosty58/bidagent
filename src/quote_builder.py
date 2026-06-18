@@ -46,7 +46,7 @@ async def build_quote(
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": content_parts},
             ],
-            max_tokens=2000,
+            max_tokens=4000,
             temperature=0.2,
         )
         raw = response.choices[0].message.content or ""
@@ -136,7 +136,7 @@ For each requested service:
 1. Analyze the property photos to assess the amount of work required (e.g. estimate size/condition of driveway, height/stories of house, size of landscape beds, extent of wood rot/railing damage).
 2. Using the pricing guidelines in the price book (brackets and flat rates) as boundaries and base rates, calculate a specific, single estimated price (not a range) for the work. Be smart: do not just regurgitate the bracket boundaries; adjust the price dynamically within or slightly around the boundaries based on the visual complexity, size, and level of effort observed in the photos.
 3. Determine the bracket name that closest matches the workload.
-4. Generate a concise (1-2 sentence) job description explaining what needs to be done and how the specific price was calculated from the visual evidence in the photos.
+4. Generate an extremely concise (1 sentence, max 15 words) job description explaining what needs to be done and how the specific price was calculated.
 
 CRITICAL: Ensure the response is valid, well-formed JSON. Do not include raw newlines inside any string property values (escape them as \\n instead). Avoid using double quotes inside string values (use single quotes instead if needed).
 
@@ -147,13 +147,13 @@ Respond with ONLY a JSON object:
       "service": "concrete_clean", 
       "bracket": "medium_4_car", 
       "label": "Driveway & Concrete Deep Clean", 
-      "description": "4-car driveway shows moderate dirt and oil staining near the garage; estimated at $310 based on standard deep clean effort.", 
+      "description": "4-car driveway shows moderate dirt; estimated at $310 based on cleaning effort.", 
       "price": 310,
       "price_low": 310,
       "price_high": 310
     }}
   ],
-  "description": "Concise 2-3 sentence overall job summary based on the photos, detailing the calculated cost.",
+  "description": "Concise 1-2 sentence overall job summary based on the photos, detailing the calculated cost.",
   "total": 1250,
   "total_low": 1250,
   "total_high": 1250,
