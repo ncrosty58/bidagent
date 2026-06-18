@@ -1,0 +1,14 @@
+services:
+  bidagent:
+    build: .
+    container_name: bidagent
+    ports:
+      - "${HOST_PORT:-8000}:8000"
+    env_file:
+      - config/.env
+    environment:
+      - PORT=8000
+    volumes:
+      - ./skills:/app/skills:ro
+      - ./config/.env:/app/config/.env:ro
+    restart: unless-stopped
