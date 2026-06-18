@@ -37,6 +37,7 @@ async def build_quote(
             "image_url": {"url": f"data:image/jpeg;base64,{b64}", "detail": "auto"},
         })
 
+    raw = ""
     try:
         client = OpenAI(api_key=settings.openai_api_key, base_url=settings.openai_base_url)
         response = client.chat.completions.create(
@@ -49,7 +50,50 @@ async def build_quote(
             temperature=0.2,
         )
         raw = response.choices[0].message.content or ""
-        clean = raw.replace("```json", "").replace("```", "").strip()
+        
+        # Clean JSON structure
+        clean = raw.strip()
+        
+        # Strip markdown code fences if present
+        if clean.startswith("```"):
+            first_newline = clean.find("\n")
+            if first_newline != -1:
+                clean = clean[first_newline:].strip()
+            if clean.endswith("```"):
+                clean = clean[:-3].strip()
+        
+        # Extract only the JSON part between first { and last }
+        start = clean.find('{')
+        end = clean.rfind('}')
+        if start >= 0 and end > start:
+            clean = clean[start:end+1]
+            
+        # Sanitize raw newlines/tabs inside string literals
+        chars = []
+        in_string = False
+        escape = False
+        for c in clean:
+            if c == '"' and not escape:
+                in_string = not in_string
+                chars.append(c)
+            elif c == '\\' and in_string and not escape:
+                escape = True
+                chars.append(c)
+            elif in_string:
+                if escape:
+                    escape = False
+                if c == '\n':
+                    chars.append('\\n')
+                elif c == '\r':
+                    chars.append('\\r')
+                elif c == '\t':
+                    chars.append('\\t')
+                else:
+                    chars.append(c)
+            else:
+                chars.append(c)
+        clean = "".join(chars)
+        
         result = json.loads(clean)
         
         # Ensure single price fields are present and ranges match the single price
@@ -72,7 +116,7 @@ async def build_quote(
 
         return result
     except Exception as e:
-        logger.error("LLM quote generation failed: %s", e)
+        logger.error("LLM quote generation failed: %s | Raw response: %r", e, raw)
         return _flat_quote_fallback(services_list, price_book, error_message=str(e))
 
 
@@ -93,6 +137,8 @@ For each requested service:
 2. Using the pricing guidelines in the price book (brackets and flat rates) as boundaries and base rates, calculate a specific, single estimated price (not a range) for the work. Be smart: do not just regurgitate the bracket boundaries; adjust the price dynamically within or slightly around the boundaries based on the visual complexity, size, and level of effort observed in the photos.
 3. Determine the bracket name that closest matches the workload.
 4. Generate a concise (1-2 sentence) job description explaining what needs to be done and how the specific price was calculated from the visual evidence in the photos.
+
+CRITICAL: Ensure the response is valid, well-formed JSON. Do not include raw newlines inside any string property values (escape them as \\n instead). Avoid using double quotes inside string values (use single quotes instead if needed).
 
 Respond with ONLY a JSON object:
 {{
