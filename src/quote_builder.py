@@ -153,7 +153,7 @@ Respond with ONLY a JSON object:
       "price_high": 310
     }}
   ],
-  "description": "Concise 1-2 sentence overall job summary based on the photos, detailing the calculated cost.",
+  "description": "An executive summary of 3-4 sentences detailing the nature of the job (e.g., state of the property, specific surfaces to refresh) and the rationale/logic for the calculated pricing based on the photos.",
   "total": 1250,
   "total_low": 1250,
   "total_high": 1250,
