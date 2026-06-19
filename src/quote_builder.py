@@ -197,7 +197,7 @@ def _flat_quote_fallback(services_list: list[str], price_book: list[dict], skill
 
         if "flat_rate" in pricing:
             fr = pricing["flat_rate"]
-            mid_val = float((fr["low"] + fr["high"]) // 2)
+            mid_val = float(fr["low"])
             items.append({
                 "service": svc_name,
                 "label": pricing.get("display", svc_name),
@@ -211,7 +211,7 @@ def _flat_quote_fallback(services_list: list[str], price_book: list[dict], skill
         elif "brackets" in pricing:
             brackets = pricing["brackets"]
             mid = brackets[len(brackets) // 2]
-            mid_val = float((mid["low"] + mid["high"]) // 2)
+            mid_val = float(mid["low"])
             items.append({
                 "service": svc_name,
                 "label": pricing.get("display", svc_name),

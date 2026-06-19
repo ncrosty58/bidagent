@@ -7,7 +7,7 @@
 # the basePrice string will be used as a fallback hint.
 
 name: curbclass
-version: "2.2"
+version: "2.3"
 description: "Curb Class — premium exterior home refresh. Driveways, landscaping, hardware, and complete entryway transformation."
 
 services:
@@ -18,15 +18,12 @@ services:
       - name: small_2_car
         label: "Small (2-car driveway)"
         low: 150
-        high: 220
       - name: medium_4_car
         label: "Medium (4-car/wide driveway)"
         low: 250
-        high: 350
       - name: large_circular
         label: "Large (circular/long driveway)"
         low: 400
-        high: 550
 
   Low-Pressure House Wash:
     display: "Low-Pressure House Wash"
@@ -35,15 +32,12 @@ services:
       - name: townhome_1_story
         label: "Townhome / 1-story"
         low: 200
-        high: 280
       - name: suburban_2_story
         label: "Suburban 2-story"
         low: 350
-        high: 480
       - name: estate_large
         label: "Large estate"
         low: 600
-        high: 900
 
   Exterior Wood & Railing Repair:
     display: "Exterior Wood & Railing Repair"
@@ -52,22 +46,18 @@ services:
       - name: minor
         label: "Minor (1-2 areas)"
         low: 200
-        high: 350
       - name: moderate
         label: "Moderate (3-5 areas)"
         low: 400
-        high: 600
       - name: extensive
         label: "Extensive (full porch/stoop)"
         low: 700
-        high: 1200
 
   Front Door & Accent Painting:
     display: "Front Door & Accent Painting"
     category: "Aesthetics"
     flat_rate:
       low: 180
-      high: 280
 
   Bush Trimming & Dark Mulching:
     display: "Bush Trimming & Dark Mulching"
@@ -76,22 +66,18 @@ services:
       - name: small_beds
         label: "Small beds"
         low: 100
-        high: 160
       - name: medium_beds
         label: "Medium beds"
         low: 220
-        high: 320
       - name: full_property
         label: "Full property"
         low: 500
-        high: 700
 
   Premium Curb Class Hardware Bundle:
     display: "Premium Curb Class Hardware Bundle"
     category: "Hardware"
     flat_rate:
       low: 400
-      high: 650
 
 image_rules:
   min_photos: 1
@@ -127,7 +113,7 @@ prompts:
   quote: |
     For each requested service:
     1. Analyze the property photos to assess the amount of work required (e.g. estimate size/condition of driveway, height/stories of house, size of landscape beds, extent of wood rot/railing damage).
-    2. Using the pricing guidelines in the price book (brackets and flat rates) as boundaries and base rates, calculate a specific, single estimated price (not a range) for the work. Be smart: do not just regurgitate the bracket boundaries; adjust the price dynamically within or slightly around the boundaries based on the visual complexity, size, and level of effort observed in the photos.
+    2. Using the pricing guidelines in the price book as a minimum starting point, calculate a specific, single estimated price for the work. There is no upper limit — price based on the actual scope and complexity you observe in the photos. Adjust upward aggressively for larger size, worse condition, or higher effort.
     3. Determine the bracket name that closest matches the workload.
     4. Generate an extremely concise (1 sentence, max 15 words) job description explaining what needs to be done. This is the item-level description, shown to the customer alongside the price. Do NOT include any price numbers or cost references in this description — focus purely on the work, scope, and effort.
 
