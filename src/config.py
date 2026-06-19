@@ -15,8 +15,6 @@ class Settings(BaseSettings):
     openai_base_url: str = "https://generativelanguage.googleapis.com/v1beta/openai/"
     openai_api_key: str = ""
     llm_model_name: str = "gemini-2.5-flash"
-    twenty_crm_api_url: str = ""
-    twenty_crm_bearer_token: str = ""
     active_skill: str = "curbclass"
 
     model_config = {

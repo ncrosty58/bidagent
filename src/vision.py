@@ -1,12 +1,12 @@
 """
 Vision analysis — uses an LLM with vision to analyze property photos.
 Returns (is_ok: bool, message: str).
+Prompt comes from the skill file, not hardcoded Python.
 """
 
 import base64
 import json
 import logging
-from typing import Any
 
 from openai import OpenAI
 
@@ -35,7 +35,7 @@ async def analyze_images(
         logger.warning("No OpenAI API key — skipping vision analysis")
         return True, "Vision API not configured — skipping image validation."
 
-    system_prompt = _build_image_check_prompt(skill_def)
+    system_prompt = skill_def.get("prompts", {}).get("image_check", "Analyze these images for an exterior home estimate.")
 
     # Build message content
     content_parts: list[dict] = [
@@ -52,7 +52,7 @@ async def analyze_images(
         })
 
     messages = [
-        {"role": "system", "content": system_prompt},
+        {"role": "system", "content": "You are a BidAgent image validator. Analyze these property photos."},
         {"role": "user", "content": content_parts},
     ]
 
@@ -80,25 +80,3 @@ async def analyze_images(
         return False, reason
 
     return True, "OK"
-
-
-def _build_image_check_prompt(skill_def: dict) -> str:
-    """Create the prompt for image validation."""
-    rules = skill_def.get("validation", {})
-    lines = [
-        "You are a BidAgent image validator. Analyze the provided exterior property photos.",
-    ]
-    if rules.get("photo_quality_check", True):
-        lines.append(
-            "- Check photo quality: are they clear, well-lit, and usable for estimating? "
-            "If blurry, too dark, obstructed, or obviously not a real property, mark as inappropriate."
-        )
-    if rules.get("content_check", True):
-        lines.append(
-            "- Check content: are these exterior property photos (house, driveway, yard, entryway)? "
-            "If they are unrelated (people, pets, interiors, screenshots, text documents, etc.), mark as inappropriate."
-        )
-    lines.append(
-        "\nRespond with ONLY a JSON object: {\"appropriate\": true/false, \"reason\": \"explanation if not appropriate\"}"
-    )
-    return "\n".join(lines)

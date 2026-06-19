@@ -1,6 +1,7 @@
 """
 Quote builder — takes requested services, price book, and vision analysis
 from the LLM, then constructs an itemized quote with job descriptions.
+All prompt text comes from the skill YAML file, not hardcoded Python.
 """
 
 import base64
@@ -21,11 +22,24 @@ async def build_quote(
     skill_def: dict,
 ) -> dict:
     if not settings.openai_api_key:
-        return _flat_quote_fallback(services_list, price_book, error_message="No OpenAI API key configured.")
+        return _flat_quote_fallback(services_list, price_book, skill_def, error_message="No OpenAI API key configured.")
 
     pricing_json = json.dumps(price_book, indent=2, default=str)
     services_json = json.dumps(services_list)
-    system_prompt = _quote_prompt(services_json, pricing_json, skill_def)
+
+    prompts = skill_def.get("prompts", {})
+    system_prompt = prompts.get("system", "")
+    quote_prompt = prompts.get("quote", "")
+
+    full_prompt = f"""{quote_prompt}
+
+Requested services:
+{services_json}
+
+Available pricing data:
+{pricing_json}
+
+Respond with ONLY a JSON object as specified above."""
 
     content_parts = [
         {"type": "text", "text": "Analyze these property photos and produce an estimate."},
@@ -45,6 +59,7 @@ async def build_quote(
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": content_parts},
+                {"role": "user", "content": [{"type": "text", "text": full_prompt}]},
             ],
             max_tokens=4000,
             temperature=0.2,
@@ -98,74 +113,70 @@ async def build_quote(
         
         # Ensure single price fields are present and ranges match the single price
         if "itemized_quote" in result:
+            # 1. Correct any existing items with price <= 0 or missing
             for item in result["itemized_quote"]:
-                if "price" in item:
-                    item["price_low"] = item["price"]
-                    item["price_high"] = item["price"]
-                elif "price_low" in item:
-                    # Fallback if LLM missed 'price' but returned 'price_low'
-                    item["price"] = item["price_low"]
-                    item["price_high"] = item["price_low"]
+                svc_name = item.get("service")
+                pricing = next((p for p in price_book if p["name"] == svc_name or p["display"] == svc_name), None)
+                
+                min_price = 150.0
+                if pricing:
+                    if "flat_rate" in pricing:
+                        min_price = float(pricing["flat_rate"]["low"])
+                    elif "brackets" in pricing and pricing["brackets"]:
+                        min_price = float(pricing["brackets"][0]["low"])
+                
+                price_val = item.get("price")
+                if price_val is None or price_val <= 0:
+                    item["price"] = min_price
+                    item["price_low"] = min_price
+                    item["price_high"] = min_price
+                    item["description"] = "Requested service quoted at starting rate (no visible work detected)."
+                else:
+                    if "price" in item:
+                        item["price_low"] = item["price"]
+                        item["price_high"] = item["price"]
+                    elif "price_low" in item:
+                        item["price"] = item["price_low"]
+                        item["price_high"] = item["price_low"]
             
-        if "total" in result:
-            result["total_low"] = result["total"]
-            result["total_high"] = result["total"]
-        elif "total_low" in result:
-            result["total"] = result["total_low"]
-            result["total_high"] = result["total_low"]
+            # 2. Add any requested services that the LLM completely omitted
+            existing_services = {item.get("service").lower() for item in result["itemized_quote"] if item.get("service")}
+            for requested in services_list:
+                pricing = next((p for p in price_book if p["name"].lower() == requested.lower() or p["display"].lower() == requested.lower()), None)
+                if pricing:
+                    key = pricing["name"]
+                    if key.lower() not in existing_services:
+                        min_price = 150.0
+                        if "flat_rate" in pricing:
+                            min_price = float(pricing["flat_rate"]["low"])
+                        elif "brackets" in pricing and pricing["brackets"]:
+                            min_price = float(pricing["brackets"][0]["low"])
+                        
+                        result["itemized_quote"].append({
+                            "service": key,
+                            "label": pricing.get("display", key),
+                            "bracket": "standard",
+                            "price": min_price,
+                            "price_low": min_price,
+                            "price_high": min_price,
+                            "description": "Requested service quoted at starting rate (no visible work detected)."
+                        })
+            
+            # 3. Recalculate totals
+            total_val = sum(item.get("price", 0.0) for item in result["itemized_quote"] if "error" not in item)
+            total_low_val = sum(item.get("price_low", 0.0) for item in result["itemized_quote"] if "error" not in item)
+            total_high_val = sum(item.get("price_high", 0.0) for item in result["itemized_quote"] if "error" not in item)
+            result["total"] = total_val
+            result["total_low"] = total_low_val
+            result["total_high"] = total_high_val
 
         return result
     except Exception as e:
         logger.error("LLM quote generation failed: %s | Raw response: %r", e, raw)
-        return _flat_quote_fallback(services_list, price_book, error_message=str(e))
+        return _flat_quote_fallback(services_list, price_book, skill_def, error_message=str(e))
 
 
-def _quote_prompt(services_json: str, pricing_json: str, skill_def: dict) -> str:
-    prompts = skill_def.get("prompts", {})
-    custom_system = prompts.get("system", "")
-    return f"""
-{custom_system}
-
-Requested services:
-{services_json}
-
-Available pricing data:
-{pricing_json}
-
-For each requested service:
-1. Analyze the property photos to assess the amount of work required (e.g. estimate size/condition of driveway, height/stories of house, size of landscape beds, extent of wood rot/railing damage).
-2. Using the pricing guidelines in the price book (brackets and flat rates) as boundaries and base rates, calculate a specific, single estimated price (not a range) for the work. Be smart: do not just regurgitate the bracket boundaries; adjust the price dynamically within or slightly around the boundaries based on the visual complexity, size, and level of effort observed in the photos.
-3. Determine the bracket name that closest matches the workload.
-4. Generate an extremely concise (1 sentence, max 15 words) job description explaining what needs to be done and how the specific price was calculated.
-
-CRITICAL: Ensure the response is valid, well-formed JSON. Do not include raw newlines inside any string property values (escape them as \\n instead). Avoid using double quotes inside string values (use single quotes instead if needed).
-
-Respond with ONLY a JSON object:
-{{
-  "itemized_quote": [
-    {{
-      "service": "concrete_clean", 
-      "bracket": "medium_4_car", 
-      "label": "Driveway & Concrete Deep Clean", 
-      "description": "4-car driveway shows moderate dirt; estimated at $310 based on cleaning effort.", 
-      "price": 310,
-      "price_low": 310,
-      "price_high": 310
-    }}
-  ],
-  "description": "An executive summary of 3-4 sentences detailing the nature of the job (e.g., state of the property, specific surfaces to refresh) and the rationale/logic for the calculated pricing based on the photos.",
-  "total": 1250,
-  "total_low": 1250,
-  "total_high": 1250,
-  "warnings": [],
-  "rejection": null
-}}
-
-If you cannot estimate any of the requested services, return rejection with an explanation.
-"""
-
-
-def _flat_quote_fallback(services_list: list[str], price_book: list[dict], error_message: str = None) -> dict:
+def _flat_quote_fallback(services_list: list[str], price_book: list[dict], skill_def: dict, error_message: str = None) -> dict:
     items = []
     total = 0
 
@@ -207,7 +218,8 @@ def _flat_quote_fallback(services_list: list[str], price_book: list[dict], error
 
     # Build overall description for CRM note
     svc_names = ", ".join(i.get("label", i.get("service", "")) for i in items if "error" not in i)
-    description = f"Auto-estimate for {len(items)} service(s): {svc_names}. Estimated total ${total}."
+    customer_description = f"Auto-estimate for {len(items)} service(s): {svc_names}. Estimated total ${total}."
+    contractor_notes = f"Fallback estimate (AI unavailable). Services: {svc_names}. Total ${total}."
 
     warning_msg = "AI analysis unavailable -- used default brackets."
     if error_message:
@@ -215,11 +227,11 @@ def _flat_quote_fallback(services_list: list[str], price_book: list[dict], error
 
     return {
         "itemized_quote": items,
-        "description": description,
+        "description": customer_description,
+        "contractor_notes": contractor_notes,
         "total": total,
         "total_low": total,
         "total_high": total,
         "warnings": [warning_msg],
         "rejection": None,
     }
-

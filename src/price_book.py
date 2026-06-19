@@ -1,9 +1,10 @@
 """
-Price book — fetches live pricing from Twenty CRM, matches to YAML bracket/flat-rate data.
+Price book — fetches live pricing through Node-RED, which proxies from Twenty CRM.
+BidAgent never calls CRM directly. All CRM interaction goes through Node-RED.
 
 BidAgent combines CRM service records (names, descriptions, basePrice hints)
 with the structural pricing (brackets, flat_rates) defined in the YAML skill file.
-CRM is the canonical list of services; YAML provides the pricing structure.
+Node-RED proxies the CRM query; YAML provides the pricing structure.
 """
 
 import logging
@@ -16,11 +17,12 @@ from src.config import settings
 
 logger = logging.getLogger("bidagent.price")
 
+NODERED_PRICEBOOK_URL = "http://bodhi.lab:1880/api/curbclass/bidagent/pricebook"
+
 
 def _parse_base_price(base_price_str: str) -> float | None:
     if not base_price_str:
         return None
-    # Find all digits in the string
     match = re.search(r'\d+', base_price_str.replace(',', ''))
     if match:
         return float(match.group(0))
@@ -29,34 +31,36 @@ def _parse_base_price(base_price_str: str) -> float | None:
 
 async def load_or_fetch_price_book(skill_def: dict) -> list[dict]:
     """
-    Returns a combined price book. CRM is tried first for names/descriptions,
+    Returns a combined price book. Node-RED is called first to proxy CRM services,
     then enriched with YAML bracket/flat_rate pricing. Falls back to YAML-only
-    if CRM is unavailable or returns empty.
+    if Node-RED is unavailable or returns empty.
     """
     yaml_services = skill_def.get("services", {})
-    if not settings.twenty_crm_api_url or not settings.twenty_crm_bearer_token:
-        logger.info("CRM not configured — using YAML-only price book")
-        return _yaml_to_book(yaml_services)
+    book = None
 
     try:
-        async with httpx.AsyncClient(timeout=15) as client:
-            resp = await client.get(
-                settings.twenty_crm_api_url.rstrip("/") + "/rest/services",
-                headers={"Authorization": f"Bearer {settings.twenty_crm_bearer_token}"},
-            )
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(NODERED_PRICEBOOK_URL)
             resp.raise_for_status()
             data = resp.json()
 
         crm_services = data.get("data", {}).get("services", [])
         if not crm_services:
-            logger.warning("CRM returned empty—using YAML price book")
-            return _yaml_to_book(yaml_services)
-
+            logger.warning("Node-RED/CRM returned empty services — using YAML price book")
+        else:
+            book = _merge_crm_with_yaml(crm_services, yaml_services)
+            logger.info("Price book: %d services via Node-RED", len(book))
     except Exception as e:
-        logger.warning("CRM fetch failed (%s) — using YAML price book", e)
-        return _yaml_to_book(yaml_services)
+        logger.warning("Node-RED price book proxy failed (%s) — using YAML", e)
 
-    # Merge CRM + YAML: match by service name
+    if book is None:
+        book = _yaml_to_book(yaml_services)
+
+    return book
+
+
+def _merge_crm_with_yaml(crm_services: list[dict], yaml_services: dict) -> list[dict]:
+    """Merge CRM service records with YAML pricing brackets/flat rates."""
     book = []
     for svc in crm_services:
         name = svc.get("name", "unknown")
@@ -73,14 +77,11 @@ async def load_or_fetch_price_book(skill_def: dict) -> list[dict]:
         elif "brackets" in yml:
             entry["brackets"] = yml["brackets"]
         else:
-            # Fallback to CRM basePrice parsed as flat rate
             parsed = _parse_base_price(svc.get("basePrice", ""))
             if parsed is not None:
                 entry["flat_rate"] = {"low": parsed, "high": parsed}
 
         book.append(entry)
-
-    logger.info("Price book: %d services (CRM base + YAML brackets)", len(book))
     return book
 
 
@@ -95,4 +96,3 @@ def _yaml_to_book(yaml_services: dict) -> list[dict]:
             entry["brackets"] = svc["brackets"]
         book.append(entry)
     return book
-
