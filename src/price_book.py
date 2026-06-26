@@ -17,7 +17,7 @@ from src.config import settings
 
 logger = logging.getLogger("bidagent.price")
 
-NODERED_PRICEBOOK_URL = "http://bodhi.lab:1880/api/curbclass/bidagent/pricebook"
+NODERED_PRICEBOOK_URL = settings.pricebook_url
 
 
 def _parse_base_price(base_price_str: str) -> float | None:
@@ -38,20 +38,21 @@ async def load_or_fetch_price_book(skill_def: dict) -> list[dict]:
     yaml_services = skill_def.get("services", {})
     book = None
 
-    try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.get(NODERED_PRICEBOOK_URL)
-            resp.raise_for_status()
-            data = resp.json()
+    if NODERED_PRICEBOOK_URL:
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.get(NODERED_PRICEBOOK_URL)
+                resp.raise_for_status()
+                data = resp.json()
 
-        crm_services = data.get("data", {}).get("services", [])
-        if not crm_services:
-            logger.warning("Node-RED/CRM returned empty services — using YAML price book")
-        else:
-            book = _merge_crm_with_yaml(crm_services, yaml_services)
-            logger.info("Price book: %d services via Node-RED", len(book))
-    except Exception as e:
-        logger.warning("Node-RED price book proxy failed (%s) — using YAML", e)
+            crm_services = data.get("data", {}).get("services", [])
+            if not crm_services:
+                logger.warning("CRM pricebook returned empty services — using YAML")
+            else:
+                book = _merge_crm_with_yaml(crm_services, yaml_services)
+                logger.info("Price book: %d services via pricebook URL", len(book))
+        except Exception as e:
+            logger.warning("Pricebook fetch failed (%s) — using YAML", e)
 
     if book is None:
         book = _yaml_to_book(yaml_services)

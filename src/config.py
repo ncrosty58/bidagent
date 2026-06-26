@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     llm_model_name: str = "gemini-2.5-flash"
     active_skill: str = "curbclass"
+    pricebook_url: str = ""
 
     model_config = {
         "env_file": str(Path(__file__).resolve().parent.parent / "config" / ".env"),
