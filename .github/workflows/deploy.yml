@@ -1,0 +1,16 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    steps:
+      - name: Pull latest code
+        run: git -C /opt/bidagent pull
+
+      - name: Restart bid agent container
+        # src/ and skills/ are volume-mounted — no rebuild needed, just restart
+        run: docker restart bidagent

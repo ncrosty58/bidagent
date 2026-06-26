@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     llm_model_name: str = "gemini-2.5-flash"
     active_skill: str = "curbclass"
     pricebook_url: str = ""
+    twenty_base_url: str = ""
+    twenty_token: str = ""
 
     model_config = {
         "env_file": str(Path(__file__).resolve().parent.parent / "config" / ".env"),
