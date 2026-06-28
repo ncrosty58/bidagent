@@ -5,6 +5,7 @@ import re
 from typing import Any
 
 import httpx
+from async_lru import alru_cache
 
 from src.config import settings
 
@@ -23,21 +24,26 @@ def _parse_base_price(base_price_str: str) -> float | None:
     return None
 
 
+@alru_cache(ttl=300)
+async def _fetch_crm_services() -> list[dict]:
+    async with httpx.AsyncClient(timeout=10) as client:
+        resp = await client.get(
+            f"{TWENTY_BASE_URL}/rest/services",
+            headers={"Authorization": f"Bearer {TWENTY_TOKEN}", "User-Agent": "bidagent/1.0"},
+            params={"limit": 100},
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    return data.get("data", {}).get("services", [])
+
+
 async def load_or_fetch_price_book(skill_def: dict) -> list[dict]:
     yaml_services = skill_def.get("services", {})
     book = None
 
     if TWENTY_BASE_URL and TWENTY_TOKEN:
         try:
-            async with httpx.AsyncClient(timeout=10) as client:
-                resp = await client.get(
-                    f"{TWENTY_BASE_URL}/rest/services",
-                    headers={"Authorization": f"Bearer {TWENTY_TOKEN}", "User-Agent": "bidagent/1.0"},
-                    params={"limit": 100},
-                )
-                resp.raise_for_status()
-                data = resp.json()
-            crm_services = data.get("data", {}).get("services", [])
+            crm_services = await _fetch_crm_services()
             if crm_services:
                 book = _merge_crm_with_yaml(crm_services, yaml_services)
                 logger.info("Price book: %d services from Twenty CRM", len(book))
