@@ -123,10 +123,21 @@ Respond with ONLY a JSON object as specified above."""
         
         # Ensure single price fields are present and ranges match the single price
         if "itemized_quote" in result:
+            # Pre-compute price lookups for O(1) performance
+            price_lookup_exact = {}
+            price_lookup_lower = {}
+            for p in price_book:
+                if "name" in p:
+                    price_lookup_exact.setdefault(p["name"], p)
+                    price_lookup_lower.setdefault(p["name"].lower(), p)
+                if "display" in p:
+                    price_lookup_exact.setdefault(p["display"], p)
+                    price_lookup_lower.setdefault(p["display"].lower(), p)
+
             # 1. Correct any existing items with price <= 0 or missing
             for item in result["itemized_quote"]:
                 svc_name = item.get("service")
-                pricing = next((p for p in price_book if p["name"] == svc_name or p["display"] == svc_name), None)
+                pricing = price_lookup_exact.get(svc_name) if svc_name else None
                 
                 min_price = 150.0
                 if pricing:
@@ -152,7 +163,7 @@ Respond with ONLY a JSON object as specified above."""
             # 2. Add any requested services that the LLM completely omitted
             existing_services = {item.get("service").lower() for item in result["itemized_quote"] if item.get("service")}
             for requested in services_list:
-                pricing = next((p for p in price_book if p["name"].lower() == requested.lower() or p["display"].lower() == requested.lower()), None)
+                pricing = price_lookup_lower.get(requested.lower()) if requested else None
                 if pricing:
                     key = pricing["name"]
                     if key.lower() not in existing_services:
@@ -190,8 +201,14 @@ def _flat_quote_fallback(services_list: list[str], price_book: list[dict], skill
     items = []
     total = 0
 
+    # Pre-compute lookup dictionary to optimize O(N) list traversal
+    price_lookup = {}
+    for p in price_book:
+        if "name" in p:
+            price_lookup.setdefault(p["name"], p)
+
     for svc_name in services_list:
-        pricing = next((p for p in price_book if p["name"] == svc_name), None)
+        pricing = price_lookup.get(svc_name)
         if not pricing:
             items.append({"service": svc_name, "error": "No pricing data found"})
             continue
